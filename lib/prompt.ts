@@ -38,7 +38,17 @@ RULES (follow these EXACTLY):
 4. Do not include page numbers, headers, footers, balance summaries, totals,
    or pre-auth/pending watermark lines as transactions.
 
-5. If the text contains NO transactions, return an empty array: []
+5. ANCHORING & DATE SANITY (IMPORTANT): The current date (today) is supplied in
+   the user message. Statements are normally recent — within roughly the last
+   12 months of today. Treat any transaction year that is more than 12 months
+   before today, or in the future, as a parsing error and DROP that
+   transaction. Ignore any stray years that appear ONLY in headers, footers,
+   "period ending", account numbers, due dates, or copyright lines — they are
+   NOT the transaction year. When a transaction has a day + month but no
+   year, assume the year of the statement period (the current/recent year),
+   never a year copied from the footer.
+
+6. If the text contains NO transactions, return an empty array: []
 
 ALLOWED CATEGORIES (use exactly these strings):
 ${ALLOWED_CATEGORIES.map((c) => `  - "${c}"`).join("\n")}
