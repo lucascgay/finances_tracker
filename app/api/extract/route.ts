@@ -37,6 +37,21 @@ async function handlePdf(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const { text } = await extractPdfText(buffer);
 
+  // A PDF with no (or almost no) text layer is almost certainly a scanned /
+  // image-based document. pdfjs can't OCR images, so instead of sending
+  // nothing to the LLM and silently returning "parsed 0", fail clearly.
+  if (!text || text.trim().length < 40) {
+    return NextResponse.json(
+      {
+        error:
+          "Could not read enough text from this PDF (it may be a scanned/image " +
+          "document with no text layer). Try opening it in Preview and " +
+          "copying/pasting the text, or export/print it as text.",
+      },
+      { status: 400 }
+    );
+  }
+
   // Source type auto-guess for PDFs: usually a credit card statement.
   const sourceType = (sourceTypeRaw as
     | "CreditCardStatement"
