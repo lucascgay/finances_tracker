@@ -1,0 +1,200 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
+import { FileUp, FileText, Loader2, Plus, CheckCircle2, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+
+type ParseResult = {
+  parsed: number;
+  inserted: number;
+  statementId: string;
+};
+
+type Status = "idle" | "loading" | "success" | "error";
+
+export default function Uploader({ onParsed }: { onParsed: () => void }) {
+  const [dragging, setDragging] = useState(false);
+  const [files, setFiles] = useState<string[]>([]);
+  const [paste, setPaste] = useState("");
+  const [sourceType, setSourceType] = useState<string>("ManualPaste");
+  const [status, setStatus] = useState<Status>("idle");
+  const [message, setMessage] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const dropped = Array.from(e.dataTransfer.files)
+      .filter((f) => f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf")
+      .map((f) => f.name);
+    if (dropped.length) setFiles((prev) => Array.from(new Set([...prev, ...dropped])));
+  }, []);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []).map((f) => f.name);
+    if (picked.length) setFiles((prev) => Array.from(new Set([...prev, ...picked])));
+  };
+
+  async function handlePdfFile(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append(
+      "sourceType",
+      sourceType === "ManualPaste" ? "CreditCardStatement" : sourceType
+    );
+    const res = await fetch("/api/extract", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Parse failed");
+    return data as ParseResult;
+  }
+
+  async function handlePaste() {
+    const res = await fetch("/api/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: paste, sourceType }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Parse failed");
+    return data as ParseResult;
+  }
+
+  async function run() {
+    setStatus("loading");
+    setMessage("");
+    try {
+      let result: ParseResult = { parsed: 0, inserted: 0, statementId: "" };
+      if (files.length && inputRef.current?.files?.length) {
+        // Upload each PDF from the input's files this session.
+        const file = inputRef.current.files[0];
+        result = await handlePdfFile(file);
+      } else if (paste.trim()) {
+        result = await handlePaste();
+      } else {
+        setStatus("error");
+        setMessage("Drop a PDF or paste some text first.");
+        return;
+      }
+      setStatus("success");
+      setMessage(`Parsed ${result.parsed} transaction(s), inserted ${result.inserted}.`);
+      setFiles([]);
+      setPaste("");
+      if (inputRef.current) inputRef.current.value = "";
+      onParsed();
+    } catch (err) {
+      setStatus("error");
+      setMessage(err instanceof Error ? err.message : "Something went wrong.");
+    }
+  }
+
+  const isBusy = status === "loading";
+
+  return (
+    <div className="space-y-4">
+      {/* ------ Drop zone ------ */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          "group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center transition-colors",
+          dragging
+            ? "border-sky-500 bg-sky-50"
+            : "border-slate-300 bg-slate-50 hover:border-sky-400 hover:bg-sky-50/50"
+        )}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          multiple
+          className="hidden"
+          onChange={handleFileInput}
+        />
+        <div
+          className={cn(
+            "flex h-12 w-12 items-center justify-center rounded-full transition",
+            dragging ? "bg-sky-100 text-sky-600" : "bg-slate-100 text-slate-500 group-hover:bg-sky-100 group-hover:text-sky-600"
+          )}
+        >
+          <FileUp className="h-6 w-6" />
+        </div>
+        <p className="text-sm font-medium text-slate-700">
+          {dragging ? "Drop to upload" : "Drag & drop PDF statement here"}
+        </p>
+        <p className="text-xs text-slate-500">or click to browse · max 25 MB</p>
+        {files.length > 0 && (
+          <div className="mt-2 w-full space-y-1 text-left">
+            {files.map((f) => (
+              <div
+                key={f}
+                className="flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-xs text-slate-700 ring-1 ring-slate-200"
+              >
+                <FileText className="h-3.5 w-3.5 text-sky-500" />
+                {f}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ------ Paste area ------ */}
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <span className="h-px flex-1 bg-slate-200" />
+        or paste raw text
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-500">
+          Kind of source
+        </label>
+        <select
+          value={sourceType}
+          onChange={(e) => setSourceType(e.target.value)}
+          className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+        >
+          <option value="ManualPaste">Manual paste / unknown</option>
+          <option value="UtilityBill">Utility bill</option>
+          <option value="CreditCardStatement">Credit card statement</option>
+        </select>
+      </div>
+
+      <textarea
+        value={paste}
+        onChange={(e) => setPaste(e.target.value)}
+        placeholder={"Electric bill – Sep\n4331234  $84.20 due 09/15\n\nor line items...\nShell 08/12 $42.10\nNetflix monthly $15.99"}
+        rows={6}
+        className="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+      />
+
+      <Button onClick={run} disabled={isBusy} className="w-full">
+        {isBusy ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Parsing with LLM…
+          </>
+        ) : (
+          <>
+            <Plus className="h-4 w-4" /> Extract Transactions
+          </>
+        )}
+      </Button>
+
+      {status === "success" && message && (
+        <p className="flex items-center gap-1.5 text-sm text-emerald-600">
+          <CheckCircle2 className="h-4 w-4" /> {message}
+        </p>
+      )}
+      {status === "error" && message && (
+        <p className="flex items-center gap-1.5 text-sm text-rose-600">
+          <AlertCircle className="h-4 w-4" /> {message}
+        </p>
+      )}
+    </div>
+  );
+}

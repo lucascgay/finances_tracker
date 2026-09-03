@@ -1,0 +1,71 @@
+// Prisma schema for LocalFinance Tracker
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A single source document the user imports (PDF statement, or pasted text).
+model Statement {
+  id        String   @id @default(cuid())
+  name      String // e.g. "visa-march-2024.pdf" or "Pasted Text · Sep 2026"
+  sourceType SourceType
+  content   String? // raw extracted text kept for reference / re-parsing
+  createdAt DateTime @default(now())
+  transactions Transaction[]
+}
+
+// Every parsed transaction.
+model Transaction {
+  id            String     @id @default(cuid())
+  date          DateTime
+  description   String
+  merchant      String?
+  amount        Float // signed in USD: expenses negative, income positive
+  category      Category
+  sourceType    SourceType
+  statementId   String?
+  statement     Statement? @relation(fields: [statementId], references: [id], onDelete: SetNull)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@index([statementId])
+}
+
+// Monthly spending caps per category. `month` is stored as "YYYY-MM".
+model Budget {
+  id       String   @id @default(cuid())
+  month    String // "YYYY-MM"
+  category Category
+  amount   Float // monthly cap in USD
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([month, category])
+}
+
+enum Category {
+  Rent
+  Gas_Transportation
+  Groceries
+  Dining_Coffee
+  Home_Supplies
+  Utilities_Housing
+  Subscriptions_Gym
+  Entertainment_Personal
+  Income_Credit
+  Uncategorized
+}
+
+enum SourceType {
+  CreditCardStatement
+  UtilityBill
+  ManualPaste
+}
