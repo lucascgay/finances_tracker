@@ -49,7 +49,7 @@ export default function Uploader({ onParsed }: { onParsed: () => void }) {
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     addFiles(Array.from(e.target.files ?? []));
-    // Reset so selecting the same file again re-triggers onChange.
+    // reset so selecting the same file again re-triggers onChange
     e.target.value = "";
   };
 
@@ -103,7 +103,7 @@ export default function Uploader({ onParsed }: { onParsed: () => void }) {
       setMessage(
         parsedCount > 0
           ? `Parsed ${parsedCount} transaction(s), inserted ${insertCount}.`
-          : "No transactions detected from that file. If it's a scanned image PDF with no text layer, try copying the text out and pasting it instead."
+          : "No transactions detected from that file. It may be a scanned image PDF — try copying the text and pasting it instead."
       );
       setFiles([]);
       setPaste("");
@@ -208,7 +208,7 @@ export default function Uploader({ onParsed }: { onParsed: () => void }) {
       <textarea
         value={paste}
         onChange={(e) => setPaste(e.target.value)}
-        placeholder={"Electric bill – Sep\n4331234  $84.20 due 09/15\n\nor line items...\nShell 08/12 $42.10\nNetflix monthly $15.99"}
+        placeholder="Shell 08/12  $42.10&#10;Netflix monthly  $15.99&#10;&#10;(paste any utility bill or line items)"
         rows={6}
         className="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
       />

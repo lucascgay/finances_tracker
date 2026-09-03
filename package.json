@@ -20,8 +20,6 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.39.0",
     "next": "14.2.35",
-    "pdf-parse": "1.1.1",
-    "pdfjs-dist": "3.11.174",
     "prisma": "^6.19.3",
     "react": "^18",
     "react-dom": "^18",
@@ -31,7 +29,6 @@
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

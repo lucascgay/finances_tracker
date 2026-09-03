@@ -40,3 +40,8 @@ prisma/*.db
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# python (pdfplumber extraction)
+py/.venv/
+__pycache__/
+*.pyc

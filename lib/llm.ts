@@ -29,7 +29,10 @@ function config(): LlmConfig {
  * shape (one example) and then the raw text to parse.
  */
 export function buildUserMessage(rawText: string): string {
-  return `Parse ALL transactions from the following raw text.
+  const today = new Date().toISOString().slice(0, 10); // e.g. "2026-09-03"
+  return `Today's date is ${today}.
+
+Parse ALL transactions from the following raw text.
 
 Return JSON conforming EXACTLY to this shape:
 {"transactions":[{"date":"YYYY-MM-DD","description":"text","merchant":"text","amount":-12.34,"category":"Groceries","sourceType":"ManualPaste"}]}

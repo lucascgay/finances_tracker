@@ -34,6 +34,24 @@ export function toDate(iso: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * The window of dates we consider plausible for a statement. We use month
+ * boundaries (not the exact current timestamp) so a transaction dated later
+ * in the current month is still kept. Statements are recent, so we reject
+ * anything older than the previous 14 months or more than ~1 month in the
+ * future. This guards against the model latching onto a stray year from a
+ * header/footer (e.g. misreading a statement as "2022" instead of 2026).
+ */
+export function isPlausibleDate(date: Date, now: Date = new Date()): boolean {
+  const min = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 14, 1)
+  );
+  const max = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+  );
+  return date >= min && date < max;
+}
+
 /** Cheap intersection dedupe using a normalized fingerprint. */
 export function fingerprint(t: RawTransaction, date: Date): string {
   const merchant = (t.merchant ?? t.description).trim().toLowerCase();
@@ -53,7 +71,9 @@ export function normalizeTransactions(
 
   for (const t of raw.transactions) {
     const date = toDate(t.date);
-    if (!date) continue;
+
+    // Drop rows lacking a usable date or with an implausible one (stray year).
+    if (!date || !isPlausibleDate(date)) continue;
 
     // Guard against absurd magnitudes / NaN from bad models.
     if (!Number.isFinite(t.amount) || Math.abs(t.amount) > 100_000_000) continue;
