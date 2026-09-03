@@ -84,6 +84,10 @@ async function persistAndRespond(
           "for statement parsing — try a stronger one (e.g. Qwen 2.5 7B: " +
           `"ollama pull qwen2.5:7b" and set OLLAMA_MODEL="qwen2.5:7b" in .env), ` +
           "or switch LLM_PROVIDER to \"openai\" with a stronger model.",
+        // Debug aid: the exact text that was sent to the model. Copy it into
+        // the manual-paste box to check whether the model is the problem or
+        // the extracted text is.
+        debug: { extractedText: text },
       },
       { status: 400 }
     );
