@@ -18,35 +18,41 @@ machine (unless you choose an online LLM provider).
 | Styling            | Tailwind CSS 3 + hand-rolled shadcn-style components|
 | Icons              | lucide-react                                        |
 | Charts             | recharts (donut + progress bars)                    |
-| PDF text extraction| pdf-parse (server-side)                             |
+| PDF text extraction| pdfplumber (Python) via a Node→Python bridge          |
 | Database           | SQLite via Prisma 6 ORM                             |
 | LLM parsing        | Ollama (local, default) **or** OpenAI-compatible API|
 | Validation         | zod (strict parsing of LLM JSON output)             |
 
-> Node 18+ is required. This repo's lockfile uses **pnpm** (pinned in
-> `package.json` via `packageManager`), but you can equally use npm or yarn.
+> Node 18+ **and Python 3.10+** are required. This repo's JS lockfile uses
+> **pnpm** (pinned in `package.json` via `packageManager`), but you can equally
+> use npm or yarn. The PDF extractor depends on **pdfplumber** (Python), which
+> is installed and managed by **uv** in the `py/` directory.
 
 ---
 
 ## 2. Quick Start
 
 ```bash
-# 1) Install dependencies
+# 1) Install JS dependencies
 pnpm install
 
-# 2) Configure your LLM in .env (already created for you):
+# 2) Install the Python environment (needed only for PDF uploads).
+#    Requires: Python 3.10+ and uv (https://docs.astral.sh/uv/)
+cd py && uv sync && cd ..
+
+# 3) Configure your LLM in .env (already created for you):
 #    Option A (default, fully offline) — install Ollama first:
 #      LLM_PROVIDER="ollama", OLLAMA_MODEL="llama3.1"
 #    Option B — OpenAI-compatible API:
 #      LLM_PROVIDER="openai", OPENAI_API_KEY="sk-...", OPENAI_MODEL="gpt-4o-mini"
 
-# 3) Create the SQLite DB and generate the Prisma client
+# 4) Create the SQLite DB and generate the Prisma client
 pnpm db:push
 
-# 4) (Optional) load demo transactions + budgets so the dashboard isn't empty
+# 5) (Optional) load demo transactions + budgets so the dashboard isn't empty
 pnpm db:seed
 
-# 5) Run it
+# 6) Run it
 pnpm dev
 # -> http://localhost:3000
 ```
@@ -59,7 +65,7 @@ pnpm dev
 Browser (React, client components)
    │  Drag-drop PDF  /  paste text
    v
-/api/extract  ──►  pdf-parse  (extract raw text from PDF buffer)
+/api/extract  ──►  pdfplumber (Python)  (layout-aware text from PDF buffer)
    │                  │
    │                  └──►  LLM  (Ollama | OpenAI)  ──►  JSON
    │                              │
@@ -77,7 +83,9 @@ Dashboard: HeroSpend, CategoryChart, BudgetBar, TransactionTable
 
 **Request flow for a paste or PDF:**
 1. Route handler receives multipart (PDF) or JSON (text).
-2. If PDF → `pdf-parse` extracts plain text.
+2. If PDF → `lib/pdf.ts` pipes the buffer to `scripts/pdf_extract.py`
+   (pdfplumber), which returns layout-aware text (columns/rows in reading
+   order) as JSON.
 3. The text + a strict system prompt are sent to the LLM.
 4. The model returns JSON → validated by **zod** → normalized (signs, dates,
    dedupe) in `lib/extract.ts`.
@@ -223,6 +231,12 @@ The user message embeds the exact JSON shape with a concrete example.
 ├── prisma/
 │   ├── schema.prisma        # models + enums
 │   └── seed.ts              # demo transactions + budgets
+├── scripts/
+│   └── pdf_extract.py      # pdfplumber layout-aware PDF → JSON text
+├── py/
+│   ├── pyproject.toml      # pdfplumber dependency (managed by uv)
+│   ├── uv.lock             # pinned Python deps
+│   └── .venv/              # virtualenv (git-ignored; build via `uv sync`)
 ├── app/
 │   ├── page.tsx             # dashboard shell (client component)
 │   ├── layout.tsx
@@ -246,7 +260,7 @@ The user message embeds the exact JSON shape with a concrete example.
 │   ├── prompt.ts            # extraction system prompt
 │   ├── llm.ts               # Ollama + OpenAI client + user prompt
 │   ├── extract.ts           # zod schema + normalization/dedupe
-│   ├── pdf.ts               # pdf-parse wrapper
+│   ├── pdf.ts               # Node→Python bridge to pdfplumber
 │   └── cn.ts                # clsx + tailwind-merge
 ├── .env / .env.example      # DATABASE_URL + LLM provider config
 └── tailwind.config.ts
@@ -259,9 +273,22 @@ The user message embeds the exact JSON shape with a concrete example.
 ### Drag-and-drop PDF + paste (`components/uploader.tsx`)
 - Client-side `onDragOver`/`onDrop` with a `dragging` state that swaps the
   dropzone border/background for **visual feedback**.
-- Tracks dropped file names; clicking the zone opens a hidden file input.
-- Sends the PDF as `multipart/form-data` to `/api/extract`; sends paste as
-  JSON. Shows inline loading / success / error states.
+- Stores the actual dropped/selected **`File` objects** in state and uploads
+  each as `multipart/form-data` to `/api/extract`; sends paste as JSON. Shows
+  inline loading / success / error states, plus a clear "no transactions /
+  likely a scanned image" message when a PDF yields nothing.
+
+### PDF text extraction (`lib/pdf.ts` + `scripts/pdf_extract.py`)
+- A Node route pipes the uploaded PDF buffer to a Python subprocess
+  (`scripts/pdf_extract.py`) that reads it from stdin.
+- The script uses **pdfplumber** with `extract_text(layout=True)`, which
+  reconstructs text from character coordinates so multi-column bank/credit-card
+  statements come out in reading order (not a jumbled blob).
+- Override the interpreter with the `PDF_PYTHON` env var; it defaults to
+  `py/.venv/bin/python`. If pdfplumber isn't installed the route returns a
+  clear error telling you to run `uv sync` in `py/`.
+- If the extracted text is extremely short, the route warns that the PDF is
+  likely a scanned image with no text layer (pdfplumber can't OCR).
 
 ### LLM integration (`lib/llm.ts`)
 - `LLM_PROVIDER` switches between `ollama` (default, fully offline) and an

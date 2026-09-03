@@ -38,7 +38,7 @@ async function handlePdf(req: NextRequest) {
   const { text } = await extractPdfText(buffer);
 
   // A PDF with no (or almost no) text layer is almost certainly a scanned /
-  // image-based document. pdf-parse can't OCR images, so instead of sending
+  // image-based document. pdfplumber can't OCR images, so instead of sending
   // nothing to the LLM and silently returning "parsed 0", fail clearly.
   if (!text || text.trim().length < 40) {
     return NextResponse.json(
