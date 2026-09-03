@@ -56,7 +56,10 @@ async function callOllama(cfg: LlmConfig, rawText: string): Promise<string> {
         // Qwen3 models think by default and burn minutes on a preamble before
         // answering; disable it so statement parsing is direct and fast.
         think: false,
-        options: { temperature: 0 },
+        // Statements can be ~15k chars (~4k tokens). Ollama's default context
+        // (2k-4k) silently truncates to the prompt's TAIL — usually legal
+        // boilerplate — making the model "find no transactions" instantly.
+        options: { temperature: 0, num_ctx: 16384 },
         messages: [
           { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
           { role: "user", content: buildUserMessage(rawText) },
