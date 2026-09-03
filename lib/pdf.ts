@@ -1,25 +1,29 @@
+import { extractText } from "unpdf";
+
 export interface PdfText {
   text: string;
   pages: number;
 }
 
 /**
- * Extract raw text from a PDF buffer using the classic pdf-parse v1 engine.
+ * Extract raw text from a PDF buffer using `unpdf`.
  *
- * pdf-parse bundles pdfjs-dist, which Next.js's bundler can't pre-compile
- * cleanly (it throws at import time and can 500 the whole route). Loading it
- * lazily via dynamic import() confines any PDF concern to this function so the
- * paste/text path can never crash /api/extract.
+ * `unpdf` wraps pdfjs-dist and ships a tree-shakable ESM/CJS build that works
+ * out of the box in Node — no `canvas` binary, no worker plumbing, and no
+ * webpack `externals` hacks (unlike `pdf-parse` / a raw `pdfjs-dist` import,
+ * both of which have historically broken Next.js server bundling).
+ *
+ * `extractText` preserves per-line reading order (description + amount kept
+ * together), which matters a lot for an LLM parsing columnar statements.
  */
 export async function extractPdfText(buffer: Buffer): Promise<PdfText> {
-  // Import the real extractor directly. The package's top-level `index.js`
-  // wraps it in a "debug mode" block that reads a missing test fixture when
-  // `module.parent` is falsy under a bundler (throwing ENOENT). Bypassing it
-  // also keeps pdfjs out of the eager module graph so paste/text can't 500.
-  const { default: pdf } = await import("pdf-parse/lib/pdf-parse.js");
-  const result = await pdf(buffer, { version: "v1.10.100" });
+  const { text, totalPages } = await extractText(new Uint8Array(buffer), {
+    mergePages: true,
+  });
+
   return {
-    text: (result.text ?? "").replace(/\u0000/g, ""),
-    pages: result.numpages ?? 1,
+    // Null bytes sometimes leak through from encoded content streams.
+    text: (text ?? "").replace(/\u0000/g, ""),
+    pages: totalPages ?? 1,
   };
 }
