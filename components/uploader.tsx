@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { FileUp, FileText, Loader2, Plus, CheckCircle2, AlertCircle } from "lucide-react";
+import { FileUp, FileText, Loader2, Plus, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 
@@ -15,25 +15,42 @@ type Status = "idle" | "loading" | "success" | "error";
 
 export default function Uploader({ onParsed }: { onParsed: () => void }) {
   const [dragging, setDragging] = useState(false);
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
   const [paste, setPaste] = useState("");
   const [sourceType, setSourceType] = useState<string>("ManualPaste");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const dropped = Array.from(e.dataTransfer.files)
-      .filter((f) => f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf")
-      .map((f) => f.name);
-    if (dropped.length) setFiles((prev) => Array.from(new Set([...prev, ...dropped])));
+  const isPdf = (f: File) =>
+    f.name.toLowerCase().endsWith(".pdf") || f.type === "application/pdf";
+
+  const addFiles = useCallback((incoming: File[]) => {
+    const pdfs = incoming.filter(isPdf);
+    if (pdfs.length) {
+      setFiles((prev) => {
+        const existing = new Set(prev.map((f) => f.name + f.lastModified));
+        return [
+          ...prev,
+          ...pdfs.filter((f) => !existing.has(f.name + f.lastModified)),
+        ];
+      });
+    }
   }, []);
 
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      addFiles(Array.from(e.dataTransfer.files));
+    },
+    [addFiles]
+  );
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []).map((f) => f.name);
-    if (picked.length) setFiles((prev) => Array.from(new Set([...prev, ...picked])));
+    addFiles(Array.from(e.target.files ?? []));
+    // reset so selecting the same file again re-triggers onChange
+    e.target.value = "";
   };
 
   async function handlePdfFile(file: File) {
@@ -65,19 +82,29 @@ export default function Uploader({ onParsed }: { onParsed: () => void }) {
     setMessage("");
     try {
       let result: ParseResult = { parsed: 0, inserted: 0, statementId: "" };
-      if (files.length && inputRef.current?.files?.length) {
-        // Upload each PDF from the input's files this session.
-        const file = inputRef.current.files[0];
-        result = await handlePdfFile(file);
+      let parsedCount = 0;
+
+      if (files.length) {
+        for (const file of files) {
+          result = await handlePdfFile(file);
+          parsedCount += result.parsed;
+        }
       } else if (paste.trim()) {
         result = await handlePaste();
+        parsedCount = result.parsed;
       } else {
         setStatus("error");
         setMessage("Drop a PDF or paste some text first.");
         return;
       }
-      setStatus("success");
-      setMessage(`Parsed ${result.parsed} transaction(s), inserted ${result.inserted}.`);
+
+      const insertCount = result.inserted;
+      setStatus(parsedCount > 0 ? "success" : "error");
+      setMessage(
+        parsedCount > 0
+          ? `Parsed ${parsedCount} transaction(s), inserted ${insertCount}.`
+          : "No transactions detected from that file. It may be a scanned image PDF — try copying the text and pasting it instead."
+      );
       setFiles([]);
       setPaste("");
       if (inputRef.current) inputRef.current.value = "";
@@ -127,16 +154,29 @@ export default function Uploader({ onParsed }: { onParsed: () => void }) {
         <p className="text-sm font-medium text-slate-700">
           {dragging ? "Drop to upload" : "Drag & drop PDF statement here"}
         </p>
-        <p className="text-xs text-slate-500">or click to browse · max 25 MB</p>
+        <p className="text-xs text-slate-500">or click to browse · PDF only</p>
+
         {files.length > 0 && (
           <div className="mt-2 w-full space-y-1 text-left">
-            {files.map((f) => (
+            {files.map((f, i) => (
               <div
-                key={f}
-                className="flex items-center gap-2 rounded-md bg-white px-3 py-1.5 text-xs text-slate-700 ring-1 ring-slate-200"
+                key={i}
+                className="flex items-center justify-between gap-2 rounded-md bg-white px-3 py-1.5 text-xs text-slate-700 ring-1 ring-slate-200"
               >
-                <FileText className="h-3.5 w-3.5 text-sky-500" />
-                {f}
+                <span className="flex min-w-0 items-center gap-2">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-sky-500" />
+                  <span className="truncate">{f.name}</span>
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFiles((prev) => prev.filter((_, j) => j !== i));
+                  }}
+                  className="text-slate-400 hover:text-rose-500"
+                  aria-label="Remove file"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
             ))}
           </div>
@@ -168,7 +208,7 @@ export default function Uploader({ onParsed }: { onParsed: () => void }) {
       <textarea
         value={paste}
         onChange={(e) => setPaste(e.target.value)}
-        placeholder={"Electric bill – Sep\n4331234  $84.20 due 09/15\n\nor line items...\nShell 08/12 $42.10\nNetflix monthly $15.99"}
+        placeholder="Shell 08/12  $42.10&#10;Netflix monthly  $15.99&#10;&#10;(paste any utility bill or line items)"
         rows={6}
         className="w-full resize-y rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
       />
