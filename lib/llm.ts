@@ -53,6 +53,10 @@ async function callOllama(cfg: LlmConfig, rawText: string): Promise<string> {
         model: cfg.ollamaModel,
         stream: false,
         format: "json", // force JSON output when the model supports it
+        // Qwen3 models think by default and burn minutes on a preamble before
+        // answering; disable it so statement parsing is direct and fast.
+        think: false,
+        options: { temperature: 0 },
         messages: [
           { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
           { role: "user", content: buildUserMessage(rawText) },
@@ -120,12 +124,28 @@ export async function extractTransactions(rawText: string) {
       : await callOpenAi(cfg, rawText);
 
   // The model may wrap the array or return an object; try to parse both.
-  const parsed = JSON.parse(content);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error(
+      `The model did not return valid JSON (snippet of what it sent:` +
+        ` "${content.slice(0, 300)}..."). Check OLLAMA_MODEL — expect a model that follows JSON output.`
+    );
+  }
   const candidate = Array.isArray(parsed)
     ? { transactions: parsed }
     : parsed && typeof parsed === "object" && "transactions" in parsed
       ? parsed
       : { transactions: [] };
 
-  return ExtractionResponseSchema.parse(candidate);
+  try {
+    const schema = ExtractionResponseSchema.parse(candidate);
+    return { schema, rawResponse: content };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `The model returned data that failed validation: ${detail.slice(0, 400)}`
+    );
+  }
 }

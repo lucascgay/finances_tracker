@@ -24,9 +24,10 @@ async function main() {
   console.log("\n===== LLM RESULT =====\n");
 
   try {
-    const res = await extractTransactions(text);
-    console.log("transactions:", res.transactions.length);
-    console.log(JSON.stringify(res.transactions.slice(0, 5), null, 2));
+    const { schema, rawResponse } = await extractTransactions(text);
+    console.log("transactions:", schema.transactions.length);
+    console.log(JSON.stringify(schema.transactions.slice(0, 5), null, 2));
+    console.log("raw response (first 500):", rawResponse.slice(0, 500));
   } catch (e) {
     console.error("LLM ERROR:", e instanceof Error ? e.message : e);
     process.exit(1);

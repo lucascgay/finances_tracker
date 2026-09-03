@@ -69,8 +69,7 @@ async function persistAndRespond(
   sourceType: "CreditCardStatement" | "UtilityBill" | "ManualPaste"
 ) {
   // 1) Run the LLM parser.
-  const raw = await extractTransactions(text);
-  const schema = ExtractionResponseSchema.parse(raw);
+  const { schema, rawResponse } = await extractTransactions(text);
   const rows = normalizeTransactions(schema);
 
   // The document had real text but the model extracted zero transactions.
@@ -84,10 +83,13 @@ async function persistAndRespond(
           "for statement parsing — try a stronger one (e.g. Qwen 2.5 7B: " +
           `"ollama pull qwen2.5:7b" and set OLLAMA_MODEL="qwen2.5:7b" in .env), ` +
           "or switch LLM_PROVIDER to \"openai\" with a stronger model.",
-        // Debug aid: the exact text that was sent to the model. Copy it into
-        // the manual-paste box to check whether the model is the problem or
-        // the extracted text is.
-        debug: { extractedText: text },
+        // Debug aid: the exact text that was sent to the model and what it
+        // answered with. Copy the text into the manual-paste box to check
+        // whether the model or the extracted text is the problem.
+        debug: {
+          extractedText: text,
+          modelResponse: rawResponse.slice(0, 1000),
+        },
       },
       { status: 400 }
     );
