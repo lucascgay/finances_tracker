@@ -73,6 +73,22 @@ async function persistAndRespond(
   const schema = ExtractionResponseSchema.parse(raw);
   const rows = normalizeTransactions(schema);
 
+  // The document had real text but the model extracted zero transactions.
+  // Instead of silently reporting success (parsed: 0), fail loudly so the user
+  // knows the model, not the PDF, is the problem.
+  if (rows.length === 0 && text.trim().length >= 40) {
+    return NextResponse.json(
+      {
+        error:
+          "The LLM found no transactions in this text. Your model is likely weak " +
+          "for statement parsing — try a stronger one (e.g. Qwen 2.5 7B: " +
+          `"ollama pull qwen2.5:7b" and set OLLAMA_MODEL="qwen2.5:7b" in .env), ` +
+          "or switch LLM_PROVIDER to \"openai\" with a stronger model.",
+      },
+      { status: 400 }
+    );
+  }
+
   // 2) Persist the source statement (even if zero transactions parsed).
   const statement = await prisma.statement.create({
     data: { name, sourceType, content: text },
