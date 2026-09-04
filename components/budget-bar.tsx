@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Target } from "lucide-react";
+import { Copy, Target } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   Card,
@@ -21,12 +21,15 @@ export interface BudgetRow {
 export default function BudgetBar({
   rows,
   onSave,
+  onCopyPrev,
 }: {
   rows: BudgetRow[];
   onSave: (updates: Record<string, number>) => void;
+  onCopyPrev?: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [copying, setCopying] = useState(false);
 
   const totalBudgeted = rows.reduce((s, r) => s + r.budgeted, 0);
   const totalSpent = rows.reduce((s, r) => s + r.spent, 0);
@@ -62,12 +65,35 @@ export default function BudgetBar({
     }
   }
 
+  async function copyPrev() {
+    setCopying(true);
+    try {
+      await onCopyPrev?.();
+      setDraft({}); // inputs refresh via the parent's reload
+    } finally {
+      setCopying(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Target className="h-4 w-4 text-sky-500" /> Budget vs. actual
-        </CardTitle>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-sky-500" /> Budget vs. actual
+          </CardTitle>
+          {onCopyPrev && (
+            <button
+              onClick={copyPrev}
+              disabled={copying || saving}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+              title="Replace this month's budgets with the previous month's"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              {copying ? "Copying…" : "Copy from previous month"}
+            </button>
+          )}
+        </div>
         <CardDescription>
           {fmt(totalSpent)} of {fmt(totalBudgeted)} used ({pct.toFixed(0)}%)
         </CardDescription>

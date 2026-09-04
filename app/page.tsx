@@ -131,6 +131,31 @@ export default function DashboardPage() {
     load();
   }
 
+  /**
+   * Copy the previous month's budgets (relative to the month being viewed)
+   * into this month. The same logic works for past or future months because
+   * we always walk back one month from the selected key.
+   */
+  async function copyPrevBudgets() {
+    const [y, m] = month.split("-").map(Number);
+    const prevKey = monthKey(new Date(Date.UTC(y, m - 2, 1)));
+
+    const res = await fetch(`/api/budgets?month=${prevKey}`);
+    const data = await res.json();
+    const budgets: { category: string; amount: number }[] = (
+      (data.categories ?? []) as { category: string; budgeted: number }[]
+    )
+      .filter((r) => r.budgeted > 0)
+      .map((r) => ({ category: r.category, amount: r.budgeted }));
+
+    await fetch("/api/budgets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month, budgets }),
+    });
+    load();
+  }
+
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
@@ -190,7 +215,11 @@ export default function DashboardPage() {
         {/* Charts */}
         <section className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
           <CategoryChart data={categorySlices} />
-          <BudgetBar rows={budgetRows} onSave={saveBudget} />
+          <BudgetBar
+            rows={budgetRows}
+            onSave={saveBudget}
+            onCopyPrev={copyPrevBudgets}
+          />
         </section>
 
         {/* Transactions */}
