@@ -70,7 +70,6 @@ export default function CategoryChart({ data }: { data: CategorySlice[] }) {
           {data
             .slice()
             .sort((a, b) => b.value - a.value)
-            .slice(0, 6)
             .map((d) => (
               <div
                 key={d.category}

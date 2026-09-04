@@ -95,7 +95,12 @@ export default function BudgetBar({
         <div className="space-y-3">
           {rows
             .slice()
-            .sort((a, b) => b.spent - a.spent)
+            .sort((a, b) => {
+              // Uncategorized always at the bottom; otherwise by spend desc.
+              const aU = a.category === "Uncategorized" ? 1 : 0;
+              const bU = b.category === "Uncategorized" ? 1 : 0;
+              return aU - bU || b.spent - a.spent;
+            })
             .map((r) => {
               const rpct = r.budgeted > 0 ? (r.spent / r.budgeted) * 100 : 0;
               const current = draft[r.category] ?? String(r.budgeted || "");
